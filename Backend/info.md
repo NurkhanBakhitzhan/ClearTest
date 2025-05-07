@@ -35,3 +35,9 @@ CREATE TABLE rooms (
   host_id INTEGER REFERENCES users(id) ON DELETE CASCADE
 );
 
+проверка бд в докер
+повер шел
+docker exec -it dnd-postgres psql -U postgres -d dnd_db
+\dt
+SELECT * FROM users;
+

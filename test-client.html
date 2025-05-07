@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Auth Client</title>
+</head>
+<body>
+  <h1>Регистрация</h1>
+  <form id="registerForm">
+    <input type="text" name="username" placeholder="Username" required autocomplete="username" />
+    <input type="email" name="email" placeholder="Email" required autocomplete="email" />
+    <input type="password" name="password" placeholder="Password" required autocomplete="current-password" />
+    <button type="submit">Register</button>
+  </form>
+  
+
+  <h1>Вход</h1>
+  <form id="login-form">
+    <input type="text" placeholder="Username" name="username" required><br>
+    <input type="password" placeholder="Password" name="password" required><br>
+    <button type="submit">Войти</button>
+  </form>
+
+  <script>
+    const apiUrl = 'http://localhost:3001/api/auth';
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = e.target.username.value;
+      const email = e.target.email.value;
+      const password = e.target.password.value;
+    
+      const response = await fetch('http://localhost:3001/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+    
+      const data = await response.json();
+      console.log(data);
+    });
+    
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const res = await fetch(`${apiUrl}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: form.username.value,
+          password: form.password.value
+        })
+      });
+      const data = await res.json();
+      alert('Вход: ' + JSON.stringify(data));
+    });
+
+    // login
+fetch('http://localhost:3001/api/auth/login', {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username, password })
+}).then(res => res.json()).then(data => {
+  localStorage.setItem('accessToken', data.accessToken);
+});
+
+// refresh
+fetch('http://localhost:3001/api/auth/refresh-token', {
+  method: 'POST',
+  credentials: 'include'
+}).then(res => res.json()).then(data => {
+  localStorage.setItem('accessToken', data.accessToken);
+});
+
+
+    fetch('http://localhost:3001/api/auth/profile', {
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    })
+    .then(res => res.json())
+    .then(data => console.log('Профиль пользователя:', data));    
+    
+  </script>
+</body>
+</html>
