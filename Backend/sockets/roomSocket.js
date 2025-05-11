@@ -1,4 +1,5 @@
-const { deleteRoom, getRoomById } = require('../models/roomModel');
+const { deleteRoom, getRoomById, createRoom } = require('../models/roomModel');
+const bcrypt = require('bcrypt'); // Если будешь хэшировать пароль
 
 const rooms = new Map(); // key: roomId, value: { hostId, sockets: Set }
 
@@ -6,9 +7,46 @@ function registerRoomSockets(io) {
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
-    socket.on('joinRoom', async ({ roomId, userId }) => {
+    // ✅ Обработчик СОЗДАНИЯ комнаты
+    socket.on('createRoom', async ({ name, mode, password, userId }) => {
+      try {
+        const isPrivate = (mode === 'private');
+        const isProtected = (mode === 'protected');
+        const finalPassword = isProtected ? password : null;
+
+        const newRoom = await createRoom({
+          name,
+          isPrivate: isPrivate || isProtected,
+          password: finalPassword,
+          hostId: userId,
+        });
+
+        rooms.set(newRoom.id, { hostId: userId, sockets: new Set([socket.id]) });
+
+        socket.join(newRoom.id);
+        socket.data.roomId = newRoom.id;
+        socket.data.userId = userId;
+        socket.data.isHost = true;
+
+        socket.emit('roomCreated', { roomId: newRoom.id });
+        console.log(`✅ Комната создана: ${newRoom.name} (ID: ${newRoom.id}) пользователем ${userId}`);
+      } catch (err) {
+        console.error('❌ Ошибка при создании комнаты:', err);
+        socket.emit('joinError', 'Ошибка при создании комнаты');
+      }
+    });
+
+    // другие обработчики:
+    socket.on('joinRoom', async ({ roomId, userId, password }) => {
       const room = await getRoomById(roomId);
-      if (!room) return socket.emit('error', 'Room not found');
+      if (!room) return socket.emit('joinError', 'Room not found');
+
+      if (room.is_private) {
+        if (room.password) {
+          const match = await bcrypt.compare(password || '', room.password);
+          if (!match) return socket.emit('joinError', 'Неверный пароль');
+        }
+      }
 
       socket.join(roomId);
 
@@ -24,13 +62,6 @@ function registerRoomSockets(io) {
       io.to(roomId).emit('roomUpdate', {
         users: Array.from(rooms.get(roomId).sockets),
       });
-      if (room.mode === 'protected') {
-        const match = await bcrypt.compare(password, room.password_hash);
-        if (!match) return socket.emit('error', 'Wrong password');
-      } else if (room.mode === 'private' && roomId !== requestedRoomId) {
-        return socket.emit('error', 'Room not accessible');
-      }
-      
     });
 
     socket.on('leaveRoom', async () => {

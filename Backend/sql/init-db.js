@@ -1,10 +1,11 @@
 // init-db.js
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
+const db = require('../db');
 
 async function runMigrations() {
-  const files = ['users.sql', 'sessions.sql'];
+  const files = ['users.sql', 'sessions.sql', 'rooms.sql'];
+  
 
   for (const file of files) {
     const filePath = path.join(__dirname, 'sql', file);
