@@ -24,6 +24,13 @@ function registerRoomSockets(io) {
       io.to(roomId).emit('roomUpdate', {
         users: Array.from(rooms.get(roomId).sockets),
       });
+      if (room.mode === 'protected') {
+        const match = await bcrypt.compare(password, room.password_hash);
+        if (!match) return socket.emit('error', 'Wrong password');
+      } else if (room.mode === 'private' && roomId !== requestedRoomId) {
+        return socket.emit('error', 'Room not accessible');
+      }
+      
     });
 
     socket.on('leaveRoom', async () => {

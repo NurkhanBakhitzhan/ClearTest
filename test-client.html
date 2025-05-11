@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Test Auth Client</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
   <h1>Регистрация</h1>
@@ -12,7 +13,6 @@
     <input type="password" name="password" placeholder="Password" required autocomplete="current-password" />
     <button type="submit">Register</button>
   </form>
-  
 
   <h1>Вход</h1>
   <form id="login-form">
@@ -21,25 +21,55 @@
     <button type="submit">Войти</button>
   </form>
 
+  <h1>Создание комнаты</h1>
+  <form id="create-room-form">
+    <input type="text" name="roomName" placeholder="Room name" required />
+    <select name="mode">
+      <option value="public">Public</option>
+      <option value="private">Private</option>
+      <option value="protected">Protected (with password)</option>
+    </select>
+    <input type="password" name="password" placeholder="Password (optional)" />
+    <button type="submit">Создать комнату</button>
+  </form>
+
+  <h1>Список комнат</h1>
+<button id="fetch-rooms">Обновить список</button>
+<ul id="room-list"></ul>
+
+
+
+  <div id="log"></div>
+
   <script>
     const apiUrl = 'http://localhost:3001/api/auth';
+    const socket = io('http://localhost:3001', {
+      withCredentials: true
+    });
+
+    let userId = null;
+
+    const log = (msg) => {
+      const div = document.getElementById('log');
+      div.innerHTML += `<p>${msg}</p>`;
+    };
 
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = e.target.username.value;
       const email = e.target.email.value;
       const password = e.target.password.value;
-    
-      const response = await fetch('http://localhost:3001/api/auth/register', {
+
+      const response = await fetch(`${apiUrl}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email, password }),
       });
-    
+
       const data = await response.json();
       console.log(data);
+      log('Зарегистрирован: ' + JSON.stringify(data));
     });
-    
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -47,42 +77,120 @@
       const res = await fetch(`${apiUrl}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           username: form.username.value,
           password: form.password.value
         })
       });
       const data = await res.json();
-      alert('Вход: ' + JSON.stringify(data));
+      localStorage.setItem('accessToken', data.accessToken);
+      log('Вход выполнен');
+      
+      const profile = await fetch(`${apiUrl}/profile`, {
+        headers: {
+          'Authorization': 'Bearer ' + data.accessToken
+        }
+      });
+      const profileData = await profile.json();
+      userId = profileData.id;
+      log('userId: ' + userId);
     });
 
-    // login
-fetch('http://localhost:3001/api/auth/login', {
-  method: 'POST',
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username, password })
-}).then(res => res.json()).then(data => {
-  localStorage.setItem('accessToken', data.accessToken);
+    document.getElementById('create-room-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!userId) return log('❌ Сначала войди, чтобы создать комнату');
+
+      const name = e.target.roomName.value;
+      const mode = e.target.mode.value;
+      const password = e.target.password.value;
+
+      socket.emit('createRoom', { name, mode, password, userId });
+      log('🛠 Отправлен запрос на создание комнаты');
+    });
+
+    socket.on('roomCreated', ({ roomId }) => {
+      log(`✅ Комната создана. ID: ${roomId}`);
+    });
+
+    function getRooms() {
+  socket.emit('getRooms');
+}
+
+socket.on('roomList', rooms => {
+  const list = document.getElementById('roomList');
+  list.innerHTML = '';
+
+  rooms.forEach(room => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      🏰 <b>${room.name}</b> (${room.mode}) - Игроков: ${room.players.length}
+      <button onclick="joinRoom('${room.id}', '${room.mode}')">Присоединиться</button>
+    `;
+    list.appendChild(li);
+  });
 });
 
-// refresh
-fetch('http://localhost:3001/api/auth/refresh-token', {
-  method: 'POST',
-  credentials: 'include'
-}).then(res => res.json()).then(data => {
-  localStorage.setItem('accessToken', data.accessToken);
+function joinRoom(roomId, mode) {
+  if (!userId) return log('❌ Сначала войди, чтобы подключаться');
+
+  let password = '';
+  if (mode === 'protected') {
+    password = prompt('Введите пароль:');
+  }
+
+  socket.emit('joinRoom', { roomId, userId, password });
+  log(`⏳ Запрос на вход в комнату: ${roomId}`);
+}
+
+socket.on('roomJoined', ({ room, players }) => {
+  log(`✅ Подключён к комнате: ${room.name}`);
+  displayPlayers(players, room.masterId);
+});
+
+socket.on('joinError', msg => {
+  log('❌ Ошибка: ' + msg);
+});
+
+function displayPlayers(players, masterId) {
+  const ul = document.createElement('ul');
+  players.forEach(p => {
+    const icon = (p.id === masterId) ? '👑' : '🧍';
+    const li = document.createElement('li');
+    li.textContent = `${icon} ${p.name}`;
+    ul.appendChild(li);
+  });
+  document.getElementById('log').appendChild(ul);
+}
+
+document.getElementById('fetch-rooms').addEventListener('click', async () => {
+  const response = await fetch('http://localhost:3001/api/rooms')
+  .then(res => res.json())
+  .then(rooms => {
+    if (!Array.isArray(rooms)) {
+      console.error('Некорректный ответ от сервера:', rooms);
+      return;
+    }
+    rooms.forEach(room => {
+      // рендер комнаты
+    });
+  })
+  .catch(err => console.error('Ошибка при получении комнат:', err));
+
+  const rooms = await response.json();
+
+  const list = document.getElementById('room-list');
+  list.innerHTML = '';
+  rooms.forEach(room => {
+    const li = document.createElement('li');
+    li.textContent = `${room.name} (ID: ${room.id})`;
+    list.appendChild(li);
+  });
+
+  log(`🔄 Получено ${rooms.length} комнат`);
 });
 
 
-    fetch('http://localhost:3001/api/auth/profile', {
-      headers: {
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
-      }
-    })
-    .then(res => res.json())
-    .then(data => console.log('Профиль пользователя:', data));    
-    
   </script>
 </body>
 </html>

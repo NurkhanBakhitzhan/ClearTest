@@ -1,7 +1,9 @@
+// routes/auth.js
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const authenticateToken = require('../middleware/authMiddleware');
 require('dotenv').config();
 
 const router = express.Router();
@@ -55,6 +57,19 @@ router.post('/login', async (req, res) => {
     });
 
     res.json({ accessToken });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Ошибка сервера' });
+  }
+});
+
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query('SELECT id, username FROM users WHERE id = $1', [req.user.userId]);
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ message: 'Пользователь не найден' });
+
+    res.json({ id: user.id, username: user.username });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Ошибка сервера' });

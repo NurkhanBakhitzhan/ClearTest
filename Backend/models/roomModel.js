@@ -10,12 +10,16 @@ const createRoom = async ({ name, isPrivate, password, hostId }) => {
   return result.rows[0];
 };
 
-const getAllPublicRooms = async () => {
-  const result = await db.query(
-    `SELECT id, name FROM rooms WHERE is_private = false`
-  );
-  return result.rows;
+const listPublic = async (req, res) => {
+  try {
+    const rooms = await getAllPublicRooms();
+    res.json(rooms);
+  } catch (err) {
+    console.error('❌ Ошибка при получении комнат:', err);
+    res.status(500).json({ message: 'Failed to get rooms' });
+  }
 };
+
 
 const getRoomById = async (id) => {
   const result = await db.query(
@@ -24,6 +28,14 @@ const getRoomById = async (id) => {
   );
   return result.rows[0];
 };
+
+const getAllPublicRooms = async () => {
+  const result = await db.query(
+    `SELECT id, name FROM rooms WHERE is_private = false`
+  );
+  return result.rows;
+};
+
 
 const deleteRoom = async (id) => {
   await db.query(`DELETE FROM rooms WHERE id = $1`, [id]);

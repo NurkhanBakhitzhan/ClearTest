@@ -7,7 +7,7 @@ const {
 
 const create = async (req, res) => {
   const { name, isPrivate, password } = req.body;
-  const hostId = req.userId;
+  const hostId = req.user.userId;
 
   const hashedPassword = password
     ? await bcrypt.hash(password, 10)
